@@ -1,0 +1,56 @@
+version: "3.9"
+
+x-nnunet-base: &nnunet-base
+  container_name: nnunet-notebook
+  ports:
+    - "${JUPYTER_PORT:-8888}:8888"
+  environment:
+    - JUPYTER_TOKEN=${JUPYTER_TOKEN:-nnunet}
+    - NNUNET_CACHE_DIR=/workspace/.cache/nnunet
+    - PYTHONUNBUFFERED=1
+  volumes:
+    - .:/workspace
+    - nnunet-cache:/workspace/.cache/nnunet
+  shm_size: "4g"
+  command: >
+    sh -c "jupyter lab --ip=0.0.0.0 --port=8888 --no-browser
+           --ServerApp.allow_remote_access=True
+           --ServerApp.preferred_dir=/workspace
+           --ServerApp.token=$${JUPYTER_TOKEN:-nnunet}
+           --ServerApp.password=''"
+
+services:
+  nnunet-gpu:
+    <<: *nnunet-base
+    image: nnunet-jupyter:cuda
+    profiles: ["gpu"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: nvidia/cuda:12.1.1-cudnn9-devel-ubuntu22.04
+        TORCH_CHANNEL: https://download.pytorch.org/whl/cu121
+        TORCH_VERSION: 2.3.0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: ["gpu"]
+
+  nnunet-cpu:
+    <<: *nnunet-base
+    image: nnunet-jupyter:cpu
+    profiles: ["cpu"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: python:3.10-slim
+        TORCH_CHANNEL: https://download.pytorch.org/whl/cpu
+        TORCH_VERSION: 2.3.0
+    platform: linux/amd64
+
+volumes:
+  nnunet-cache:
