@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+nnUNet_preprocessed/
+nnUNet_raw/
+
+poetry.lock
 # C extensions
 *.so
 
