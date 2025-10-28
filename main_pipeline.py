@@ -135,6 +135,12 @@ def parse_args() -> argparse.Namespace:
         help="Experiment planner class to use (see documentation/resenc_presets.md for recommendations).",
     )
     parser.add_argument(
+        "--gpu-memory-target",
+        type=float,
+        default=None,
+        help="Optional GPU memory target in GB passed to the experiment planner to reduce patch sizes.",
+    )
+    parser.add_argument(
         "--preprocessor-class",
         type=str,
         default="DefaultPreprocessor",
@@ -169,6 +175,17 @@ def parse_args() -> argparse.Namespace:
         "--skip-test-inference",
         action="store_true",
         help="Skip test set inference.",
+    )
+    parser.add_argument(
+        "--export-test-pngs",
+        action="store_true",
+        help="After inference, export test predictions as PNG slices mirroring the original folder structure.",
+    )
+    parser.add_argument(
+        "--png-output-root",
+        type=Path,
+        default=None,
+        help="Root directory to store PNG predictions (defaults to DATA_ROOT/test_labels).",
     )
     parser.add_argument(
         "--overwrite",
@@ -273,8 +290,9 @@ def convert_split_to_nnunet(
     spacing_map: Dict[str, Tuple[float, float, float]],
     prefix: str,
     overwrite: bool,
-) -> List[str]:
+) -> Tuple[List[str], Dict[str, str]]:
     case_identifiers: List[str] = []
+    case_mapping: Dict[str, str] = {}
     for case_id in sorted(case_ids, key=lambda x: int(x)):
         image_case_dir = image_root / case_id
         label_case_dir = label_root / case_id if label_root is not None else None
@@ -303,7 +321,8 @@ def convert_split_to_nnunet(
             label_output_path = output_labels / f"{case_name}.nii.gz"
             write_nifti(label_volume, spacing, label_output_path, np.uint8)
         case_identifiers.append(case_name)
-    return case_identifiers
+        case_mapping[case_name] = str(case_id).zfill(2)
+    return case_identifiers, case_mapping
 
 
 def parse_bbox_prompts(bbox_file: Path, output_json: Path) -> None:
@@ -353,7 +372,7 @@ def generate_dataset_json_file(
     )
 
 
-def prepare_raw_dataset(args: argparse.Namespace, dataset_dir: Path) -> Dict[str, List[str]]:
+def prepare_raw_dataset(args: argparse.Namespace, dataset_dir: Path) -> Tuple[Dict[str, List[str]], Dict[str, str]]:
     spacing_map = parse_spacing_map(args.data_root / "spacing_mm.txt")
     train_ids = [p.name for p in (args.data_root / "train_images").iterdir() if p.is_dir()]
     val_ids = [p.name for p in (args.data_root / "val_images").iterdir() if p.is_dir()]
@@ -366,7 +385,7 @@ def prepare_raw_dataset(args: argparse.Namespace, dataset_dir: Path) -> Dict[str
     labels_tr.mkdir(parents=True, exist_ok=True)
     images_ts.mkdir(parents=True, exist_ok=True)
 
-    train_cases = convert_split_to_nnunet(
+    train_cases, train_map = convert_split_to_nnunet(
         train_ids,
         args.data_root / "train_images",
         args.data_root / "train_labels",
@@ -376,7 +395,7 @@ def prepare_raw_dataset(args: argparse.Namespace, dataset_dir: Path) -> Dict[str
         prefix="ct",
         overwrite=args.overwrite,
     )
-    val_cases = convert_split_to_nnunet(
+    val_cases, val_map = convert_split_to_nnunet(
         val_ids,
         args.data_root / "val_images",
         args.data_root / "val_labels",
@@ -386,7 +405,7 @@ def prepare_raw_dataset(args: argparse.Namespace, dataset_dir: Path) -> Dict[str
         prefix="ct",
         overwrite=args.overwrite,
     )
-    test_cases = convert_split_to_nnunet(
+    test_cases, test_map = convert_split_to_nnunet(
         test_ids,
         args.data_root / "test1_images",
         None,
@@ -401,6 +420,7 @@ def prepare_raw_dataset(args: argparse.Namespace, dataset_dir: Path) -> Dict[str
         "validation_cases": val_cases,
         "test_cases": test_cases,
         "spacing_file": str((args.data_root / "spacing_mm.txt").resolve()),
+        "case_folder_map": {**train_map, **val_map, **test_map},
     }
     labels = {"background": 0}
     for organ_idx in range(1, 13):
@@ -424,7 +444,7 @@ def prepare_raw_dataset(args: argparse.Namespace, dataset_dir: Path) -> Dict[str
     if args.bounding_box_prompts:
         parse_bbox_prompts(args.bounding_box_prompts, dataset_dir / "test_bboxes.json")
 
-    return {"train": train_cases, "val": val_cases, "test": test_cases}
+    return {"train": train_cases, "val": val_cases, "test": test_cases}, {**train_map, **val_map, **test_map}
 
 
 def run_planning_and_preprocessing(
@@ -436,6 +456,7 @@ def run_planning_and_preprocessing(
     planner_class: str,
     preprocessor_class: str,
     verify_dataset: bool,
+    gpu_memory_target: Optional[float],
 ) -> str:
     from nnunetv2.experiment_planning.plan_and_preprocess_api import (
         extract_fingerprints,
@@ -455,6 +476,7 @@ def run_planning_and_preprocessing(
         dataset_ids,
         experiment_planner_class_name=planner_class,
         preprocess_class_name=preprocessor_class,
+        gpu_memory_target_in_gb=gpu_memory_target,
     )
     preprocess(
         dataset_ids,
@@ -552,6 +574,32 @@ def build_inference_input_lists(image_dir: Path, case_ids: Sequence[str], file_e
     return inputs
 
 
+def convert_nifti_to_png_slices(nifti_file: Path, output_dir: Path) -> None:
+    img = sitk.ReadImage(str(nifti_file))
+    data = sitk.GetArrayFromImage(img).astype(np.uint8, copy=False)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for idx, slice_arr in enumerate(data, start=1):
+        slice_path = output_dir / f"{idx}.png"
+        io.imsave(str(slice_path), slice_arr, check_contrast=False)
+
+
+def export_predictions_to_png(
+    predictions_dir: Path,
+    output_root: Path,
+    case_folder_map: Dict[str, str],
+) -> None:
+    prediction_files = sorted(predictions_dir.glob("*.nii.gz"))
+    if not prediction_files:
+        return
+    output_root.mkdir(parents=True, exist_ok=True)
+    for prediction_file in prediction_files:
+        filename = prediction_file.name
+        identifier = filename[:-7] if filename.endswith(".nii.gz") else prediction_file.stem
+        folder_name = case_folder_map.get(identifier, identifier.split("_")[-1])
+        folder_name = str(int(folder_name)).zfill(2) if folder_name.isdigit() else folder_name
+        convert_nifti_to_png_slices(prediction_file, output_root / folder_name)
+
+
 def main() -> None:
     args = parse_args()
     configure_environment(args)
@@ -568,6 +616,7 @@ def main() -> None:
     dataset_dir.mkdir(parents=True, exist_ok=True)
 
     case_splits: Dict[str, List[str]]
+    case_folder_map: Dict[str, str]
     if args.skip_conversion and (dataset_dir / "dataset.json").exists():
         with (dataset_dir / "dataset.json").open("r") as f:
             dataset_meta = json.load(f)
@@ -576,14 +625,20 @@ def main() -> None:
             "val": dataset_meta.get("validation_cases", []),
             "test": dataset_meta.get("test_cases", []),
         }
+        raw_map = dataset_meta.get("case_folder_map", {}) or {}
+        case_folder_map = {k: str(v).zfill(2) for k, v in raw_map.items()}
         if args.log_to_stdout:
             print("Skipping dataset conversion (dataset.json already present).")
     else:
         if args.log_to_stdout:
             print("Converting raw dataset into nnU-Net format...")
-        case_splits = prepare_raw_dataset(args, dataset_dir)
+        case_splits, case_folder_map = prepare_raw_dataset(args, dataset_dir)
         if args.log_to_stdout:
             print(f"Converted dataset stored at {dataset_dir}")
+
+    # fallback mapping if missing (for backwards compatibility)
+    if not case_folder_map:
+        case_folder_map = {identifier: identifier.split("_")[-1] for identifier in case_splits.get("test", [])}
 
     active_configurations = args.configurations
     if args.only_configuration is not None:
@@ -601,6 +656,7 @@ def main() -> None:
             planner_class=args.planner_class,
             preprocessor_class=args.preprocessor_class,
             verify_dataset=args.verify_dataset,
+            gpu_memory_target=args.gpu_memory_target,
         )
         plans_identifier = resolved_plans_identifier
     else:
@@ -696,6 +752,13 @@ def main() -> None:
                 save_probabilities=args.save_probabilities,
                 overwrite=args.overwrite,
             )
+            if args.export_test_pngs:
+                png_root = args.png_output_root or (args.data_root / "test_labels")
+                if len(active_configurations) > 1 and args.png_output_root is None:
+                    png_root = png_root / configuration
+                export_predictions_to_png(test_output_dir, png_root, case_folder_map)
+                if args.log_to_stdout:
+                    print(f"Test PNG segmentations saved to {png_root}")
             if args.bounding_box_prompts:
                 bbox_target = test_output_dir / "test_bboxes.json"
                 if not bbox_target.exists():
