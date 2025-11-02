@@ -535,11 +535,14 @@ def run_inference(
     predictor = nnUNetPredictor(device=torch.device(device))
     predictor.initialize_from_trained_model_folder(str(model_dir), use_folds=(fold,), checkpoint_name=checkpoint_name)
     output_dir.mkdir(parents=True, exist_ok=True)
+    # Force a fresh export if predictions are already present to avoid silent skips.
+    existing_predictions = any(output_dir.glob("*.nii.gz"))
+    effective_overwrite = overwrite or existing_predictions
     predictor.predict_from_files(
         list(inputs),
         str(output_dir),
         save_probabilities=save_probabilities,
-        overwrite=overwrite,
+        overwrite=effective_overwrite,
     )
 
 

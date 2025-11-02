@@ -260,6 +260,21 @@ class nnUNetTrainer(object):
                                        "you know what you are doing, check https://discuss.pytorch.org/t/windows-support-timeline-for-torch-compile/182268/2")
             return False
 
+        # torch.compile requires a host compiler (for Triton kernels). Abort gracefully if none is available.
+        should_attempt_compile = (
+            ('nnUNet_compile' not in os.environ.keys())
+            or (os.environ['nnUNet_compile'].lower() in ('true', '1', 't'))
+        )
+        if self.device.type == 'cuda' and should_attempt_compile:
+            compiler_candidates = ('cc', 'gcc', 'clang')
+            has_compiler = any(shutil.which(candidate) for candidate in compiler_candidates)
+            if not has_compiler:
+                self.print_to_log_file(
+                    "INFO: torch.compile disabled because no suitable host C compiler was found."
+                    " Install gcc/clang or set nnUNet_compile=False to skip torch.compile explicitly."
+                )
+                return False
+
         if 'nnUNet_compile' not in os.environ.keys():
             return True
         else:

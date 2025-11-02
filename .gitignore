@@ -5,6 +5,11 @@ __pycache__/
 
 nnUNet_preprocessed/
 nnUNet_raw/
+nnUNet_predictions/
+nnUNet_results/
+public_leaderboard_data/
+notebook_predictions/
+
 
 poetry.lock
 # C extensions
