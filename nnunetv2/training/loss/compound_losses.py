@@ -6,8 +6,16 @@ from torch import nn
 
 
 class DC_and_CE_loss(nn.Module):
-    def __init__(self, soft_dice_kwargs, ce_kwargs, weight_ce=1, weight_dice=1, ignore_label=None,
-                 dice_class=SoftDiceLoss):
+    def __init__(
+        self,
+        soft_dice_kwargs,
+        ce_kwargs,
+        weight_ce=1,
+        weight_dice=1,
+        ignore_label=None,
+        dice_class=SoftDiceLoss,
+        ce_class=RobustCrossEntropyLoss,
+    ):
         """
         Weights for CE and Dice do not need to sum to one. You can set whatever you want.
         :param soft_dice_kwargs:
@@ -25,7 +33,7 @@ class DC_and_CE_loss(nn.Module):
         self.weight_ce = weight_ce
         self.ignore_label = ignore_label
 
-        self.ce = RobustCrossEntropyLoss(**ce_kwargs)
+        self.ce = ce_class(**ce_kwargs)
         self.dc = dice_class(apply_nonlin=softmax_helper_dim1, **soft_dice_kwargs)
 
     def forward(self, net_output: torch.Tensor, target: torch.Tensor):
