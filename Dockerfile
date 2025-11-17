@@ -1,10 +1,15 @@
-ARG BASE_IMAGE=nvidia/cuda:12.1.1-cudnn9-devel-ubuntu22.04
+# =============================
+# Base image and build args
+# =============================
+ARG BASE_IMAGE=nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04
 FROM ${BASE_IMAGE}
 
 ARG TORCH_VERSION=2.3.0
 ARG TORCH_CHANNEL=https://download.pytorch.org/whl/cu121
 
-# Prevent Python from writing .pyc files and keep stdout unbuffered
+# =============================
+# Environment variables
+# =============================
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -13,14 +18,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /workspace
 
-# Install OS-level dependencies required by nnU-Net and visualization libs
+# =============================
+# Install OS-level dependencies
+# =============================
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         python3 \
         python3-pip \
+        python3-dev \               
         python-is-python3 \
         python3-venv \
-        build-essential \
+        build-essential \           
         git \
         graphviz \
         libgl1 \
@@ -28,11 +36,14 @@ RUN apt-get update && \
         libsm6 \
         libxext6 \
         libxrender1 \
+        libffi-dev \                
         curl \
         ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies first to leverage Docker layer caching
+# =============================
+# Install Python dependencies
+# =============================
 RUN python3 -m pip install --upgrade pip && \
     python3 -m pip install --no-cache-dir \
         jupyterlab \
@@ -41,12 +52,20 @@ RUN python3 -m pip install --upgrade pip && \
         --extra-index-url ${TORCH_CHANNEL} \
         torch==${TORCH_VERSION}
 
-# Copy the project into the image and install it in editable mode together with Jupyter
+# =============================
+# Copy project and install
+# =============================
 COPY . /workspace
-
 RUN python3 -m pip install --no-cache-dir -e .
 
 EXPOSE 8888
 
-# Launch Jupyter Lab, allowing remote access with the configured token
-CMD ["sh", "-c", "jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --ServerApp.allow_remote_access=True --ServerApp.preferred_dir=/workspace --ServerApp.token=${JUPYTER_TOKEN:-nnunet} --ServerApp.password=''"]
+# =============================
+# Launch Jupyter Lab
+# =============================
+CMD ["sh", "-c", "jupyter lab --ip=0.0.0.0 --port=8888 --no-browser \
+    --ServerApp.allow_remote_access=True \
+    --ServerApp.preferred_dir=/workspace \
+    --ServerApp.token=${JUPYTER_TOKEN:-nnunet} \
+    --ServerApp.password='' \
+    --allow-root"]

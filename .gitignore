@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# nnU-Net generated data (VERY LARGE)
 nnUNet_preprocessed/
 nnUNet_raw/
 nnUNet_predictions/
@@ -10,116 +11,69 @@ nnUNet_results/
 public_leaderboard_data/
 notebook_predictions/
 
+# Medical imaging (prevent huge files from being committed)
+*.nii.gz
+*.nii
 
+# Poetry / environments
 poetry.lock
+env/
+venv/
+ENV/
+
 # C extensions
 *.so
 
-# Distribution / packaging
+# Packaging
 .Python
-env/
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
 .eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
 *.egg-info/
-.installed.cfg
-*.egg
-
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
 
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Unit test / coverage reports
+# Test / coverage
 htmlcov/
 .tox/
-.coverage
-.coverage.*
+.coverage*
 .cache
 nosetests.xml
 coverage.xml
-*,cover
 .hypothesis/
 
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
+# Sphinx
 docs/_build/
 
-# PyBuilder
-target/
-
-# IPython Notebook
+# Jupyter
 .ipynb_checkpoints
 
-# pyenv
-.python-version
+# IDE
+.idea/
+*.iml
+.vscode/
 
-# celery beat schedule file
-celerybeat-schedule
-
-# dotenv
-.env
-
-# virtualenv
-venv/
-ENV/
-
-# Spyder project settings
-.spyderproject
-
-# Rope project settings
-.ropeproject
-
-*.memmap
+# Images, large assets (not needed in repo)
 *.png
-*.zip
-*.npz
-*.npy
 *.jpg
 *.jpeg
-.idea
-*.txt
-.idea/*
-*.png
-# *.nii.gz  # nifti files needed for example_data for github actions tests
-*.nii
 *.tif
 *.bmp
-*.pkl
-*.xml
-*.pkl
-*.pdf
-*.png
-*.jpg
-*.jpeg
 
+# Model files and binary objects
+*.pkl
 *.model
+*.npz
+*.npy
+*.memmap
+*.zip
+*.tar.gz
+*.7z
 
+# Logs
+*.log
+
+# Keep this specific image
 !documentation/assets/scribble_example.png

@@ -54,7 +54,6 @@ from nnunetv2.training.dataloading.nnunet_dataset import infer_dataset_class
 from nnunetv2.training.dataloading.data_loader import nnUNetDataLoader
 from nnunetv2.training.logging.nnunet_logger import nnUNetLogger
 from nnunetv2.training.loss.compound_losses import DC_and_CE_loss, DC_and_BCE_loss
-from nnunetv2.training.loss.focal import RobustFocalLoss
 from nnunetv2.training.loss.deep_supervision import DeepSupervisionWrapper
 from nnunetv2.training.loss.dice import get_tp_fp_fn_tn, MemoryEfficientSoftDiceLoss
 from nnunetv2.training.lr_scheduler.polylr import PolyLRScheduler
@@ -261,21 +260,6 @@ class nnUNetTrainer(object):
                                        "you know what you are doing, check https://discuss.pytorch.org/t/windows-support-timeline-for-torch-compile/182268/2")
             return False
 
-        # torch.compile requires a host compiler (for Triton kernels). Abort gracefully if none is available.
-        should_attempt_compile = (
-            ('nnUNet_compile' not in os.environ.keys())
-            or (os.environ['nnUNet_compile'].lower() in ('true', '1', 't'))
-        )
-        if self.device.type == 'cuda' and should_attempt_compile:
-            compiler_candidates = ('cc', 'gcc', 'clang')
-            has_compiler = any(shutil.which(candidate) for candidate in compiler_candidates)
-            if not has_compiler:
-                self.print_to_log_file(
-                    "INFO: torch.compile disabled because no suitable host C compiler was found."
-                    " Install gcc/clang or set nnUNet_compile=False to skip torch.compile explicitly."
-                )
-                return False
-
         if 'nnUNet_compile' not in os.environ.keys():
             return True
         else:
@@ -412,16 +396,9 @@ class nnUNetTrainer(object):
                                    use_ignore_label=self.label_manager.ignore_label is not None,
                                    dice_class=MemoryEfficientSoftDiceLoss)
         else:
-            loss = DC_and_CE_loss(
-                {'batch_dice': self.configuration_manager.batch_dice,
-                 'smooth': 1e-5, 'do_bg': False, 'ddp': self.is_ddp},
-                {'gamma': 2.0},
-                weight_ce=1,
-                weight_dice=1,
-                ignore_label=self.label_manager.ignore_label,
-                dice_class=MemoryEfficientSoftDiceLoss,
-                ce_class=RobustFocalLoss,
-            )
+            loss = DC_and_CE_loss({'batch_dice': self.configuration_manager.batch_dice,
+                                   'smooth': 1e-5, 'do_bg': False, 'ddp': self.is_ddp}, {}, weight_ce=1, weight_dice=1,
+                                  ignore_label=self.label_manager.ignore_label, dice_class=MemoryEfficientSoftDiceLoss)
 
         if self._do_i_compile():
             loss.dc = torch.compile(loss.dc)
