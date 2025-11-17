@@ -1,0 +1,22 @@
+Step 1. SSH into your droplet
+ssh root@162.243.253.83
+ssh -i ~/.ssh/id_ed25519 root@162.243.253.83
+
+Step 2. Install system dependencies
+apt update && apt install -y git python3 python3-pip python3-venv libglib2.0-0 libsm6 libxext6 libxrender-dev
+apt install -y nvidia-cuda-toolkit
+
+Step 4. Create a Python virtual environment
+python3 -m venv nnunet
+source nnunet/bin/activate
+pip install --upgrade pip
+
+Step 6. Install dependencies
+pip install -r requirements.txt --no-deps
+
+Step 7. Install your nnUNet module (editable mode)
+pip install -e .
+
+Step 8. Verify setup
+nnUNetv2_train --help
+python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
